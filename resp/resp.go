@@ -32,6 +32,11 @@ const (
 )
 
 var (
+	ErrInvalidInt      = errors.New("value is not an integer or out of range")
+	ErrInvalidArgument = errors.New("invalid arguments")
+)
+
+var (
 	mem   = map[string]any{}
 	memRw = sync.RWMutex{}
 )
@@ -47,7 +52,7 @@ var (
 		},
 		"SET": func(args []*Value) *Value {
 			if len(args) < 2 {
-				return &Value{typ: SimpleErrorsTyp, err: errors.New("invalid arguments")}
+				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
 			}
 
 			memRw.Lock()
@@ -61,7 +66,7 @@ var (
 		},
 		"GET": func(args []*Value) *Value {
 			if len(args) < 1 {
-				return &Value{typ: SimpleErrorsTyp, err: errors.New("invalid arguments")}
+				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
 			}
 
 			memRw.RLock()
@@ -79,7 +84,7 @@ var (
 
 			memRw.Lock()
 			defer memRw.Unlock()
-			cnt := 0
+			cnt := int64(0)
 			for _, ar := range args {
 				_, ok := mem[ar.strv]
 				if ok {
@@ -88,6 +93,42 @@ var (
 				}
 			}
 			return &Value{typ: IntegersTyp, intv: cnt}
+		},
+		"INCR": func(args []*Value) *Value {
+			if len(args) < 1 {
+				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
+			}
+			memRw.Lock()
+			defer memRw.Unlock()
+			prev, ok := mem[args[0].strv]
+			if !ok {
+				mem[args[0].strv] = int64(1)
+				return &Value{typ: IntegersTyp, intv: 1}
+			}
+			pv, ok := prev.(int64)
+			if !ok {
+				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidInt}
+			}
+			mem[args[0].strv] = pv + 1
+			return &Value{typ: IntegersTyp, intv: pv + 1}
+		},
+		"DECR": func(args []*Value) *Value {
+			if len(args) < 1 {
+				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
+			}
+			memRw.Lock()
+			defer memRw.Unlock()
+			prev, ok := mem[args[0].strv]
+			if !ok {
+				mem[args[0].strv] = int64(0)
+				return &Value{typ: IntegersTyp, intv: 0}
+			}
+			pv, ok := prev.(int64)
+			if !ok {
+				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidInt}
+			}
+			mem[args[0].strv] = pv - 1
+			return &Value{typ: IntegersTyp, intv: pv - 1}
 		},
 	}
 )
@@ -258,7 +299,7 @@ func parseBulkString(reader *RespReader) (*Value, error) {
 type Value struct {
 	typ  byte
 	strv string
-	intv int
+	intv int64
 	arr  []*Value
 	err  error
 }
