@@ -1,4 +1,4 @@
-module github.com/curtisnewbie/mini-resp
+module github.com/curtisnewbie/mini-redis
 
 go 1.20
 

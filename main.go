@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/curtisnewbie/mini-resp/resp"
+	"github.com/curtisnewbie/mini-redis/resp"
 )
 
 func main() {
