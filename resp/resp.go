@@ -1,8 +1,10 @@
 package resp
 
 import (
+	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/spf13/cast"
 )
@@ -30,13 +32,88 @@ const (
 )
 
 var (
+	mem   = map[string]any{}
+	memRw = sync.RWMutex{}
+)
+
+var (
 	Separator       = []byte{'\r', '\n'}
 	CommandHandlers = map[string]func(args []*Value) *Value{
 		"PING": func(args []*Value) *Value {
 			return &Value{
-				typ:     BulkStringsTyp,
-				bulkstr: "PONG",
+				typ:  SimpleStringsTyp,
+				strv: "PONG",
 			}
+		},
+		"SET": func(args []*Value) *Value {
+			if len(args) < 2 {
+				return &Value{typ: SimpleErrorsTyp, err: errors.New("invalid arguments")}
+			}
+
+			memRw.Lock()
+			defer memRw.Unlock()
+			prev, ok := mem[args[0].strv]
+			mem[args[0].strv] = args[1].strv
+			if ok {
+				return &Value{typ: BulkStringsTyp, strv: cast.ToString(prev)}
+			}
+			return &Value{typ: SimpleStringsTyp, strv: "OK"}
+		},
+		"GET": func(args []*Value) *Value {
+			if len(args) < 1 {
+				return &Value{typ: SimpleErrorsTyp, err: errors.New("invalid arguments")}
+			}
+
+			memRw.RLock()
+			defer memRw.RUnlock()
+			prev, ok := mem[args[0].strv]
+			if !ok {
+				return &Value{typ: NullsTyp}
+			}
+			return &Value{typ: BulkStringsTyp, strv: cast.ToString(prev)}
+		},
+		"DEL": func(args []*Value) *Value {
+			if len(args) < 1 {
+				return &Value{typ: IntegersTyp, intv: 0}
+			}
+
+			memRw.Lock()
+			defer memRw.Unlock()
+			cnt := 0
+			for _, ar := range args {
+				_, ok := mem[ar.strv]
+				if ok {
+					cnt += 1
+					delete(mem, ar.strv)
+				}
+			}
+			return &Value{typ: IntegersTyp, intv: cnt}
+		},
+	}
+)
+
+var (
+	TypWriter = map[byte]func(v *Value, out []byte) []byte{
+		BulkStringsTyp: func(v *Value, out []byte) []byte {
+			out = append(out, cast.ToString(len(v.strv))...)
+			out = append(out, Separator...)
+			out = append(out, v.strv...)
+			return out
+		},
+		SimpleStringsTyp: func(v *Value, out []byte) []byte {
+			out = append(out, v.strv...)
+			return out
+		},
+		SimpleErrorsTyp: func(v *Value, out []byte) []byte {
+			out = append(out, v.err.Error()...)
+			return out
+		},
+		NullsTyp: func(v *Value, out []byte) []byte {
+			return out
+		},
+		IntegersTyp: func(v *Value, out []byte) []byte {
+			out = append(out, cast.ToString(v.intv)...)
+			return out
 		},
 	}
 )
@@ -44,7 +121,6 @@ var (
 type RespDataHandler func(reader *RespReader) []byte
 
 func ParseRespData(buf []byte, handler RespDataHandler) []byte {
-	// fmt.Printf("> typ:%s, tokens:\n%s\n", string(buf[0]), buf)
 	return handler(&RespReader{
 		Buf: buf,
 		Pos: 0,
@@ -59,108 +135,132 @@ func TokenToStr(tokens [][]byte) []string {
 	return st
 }
 
-func parseArray(reader *RespReader) *Value {
-	b, _ := reader.ReadByte()
+func parseArray(reader *RespReader) (*Value, error) {
+	b, ok := reader.ReadByte()
+	if !ok {
+		return nil, errors.New("invalid protocol, expected array elements")
+	}
 	n := cast.ToInt(string(b))
-
-	reader.SkipSeparator()
-
-	// fmt.Printf("Rest, count: %v, >>%v<<\n", n, reader.Rest())
 
 	elements := make([]*Value, 0, n)
 	for i := 0; i < n; i++ {
-		elements = append(elements, parseNext(reader))
+		ele, err := parseNext(reader)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse next array element, %w", err)
+		}
+		elements = append(elements, ele)
 	}
-	// fmt.Printf("Parsed array: %#v\n", elements)
-	return &Value{
-		typ: ArraysTyp,
-		arr: elements,
-	}
+	return &Value{typ: ArraysTyp, arr: elements}, nil
 }
 
-func execute(v *Value) []byte {
+func execute(v *Value, err error) []byte {
+	if err != nil {
+		return writeErr(err)
+	}
+
 	if v.typ != ArraysTyp {
 		fmt.Printf("Unable to execute, invalid data type\n")
-		return nil
+		return writeErr(errors.New("invalid data type for command"))
 	}
 	// fmt.Printf("Name Value: %#v\n", *v.arr[0])
 
-	name := strings.ToUpper(v.arr[0].bulkstr)
+	name := strings.ToUpper(v.arr[0].strv)
 	args := v.arr[1:]
 	handler := CommandHandlers[name]
 	if handler == nil {
 		fmt.Printf("Handler is nil for %v\n", name)
-		return nil
+		return writeErr(fmt.Errorf("command %v is not supported", name))
 	}
 	return writeResult(handler(args))
 }
 
 func writeResult(v *Value) []byte {
 	out := []byte{}
-	switch v.typ {
-	case BulkStringsTyp:
-		out = append(out, BulkStringsTyp)
-		out = append(out, cast.ToString(len(v.bulkstr))...)
-		out = append(out, Separator...)
-		out = append(out, v.bulkstr...)
-		return out
-	}
+	out = append(out, v.typ)
+	out = TypWriter[v.typ](v, out)
+	out = append(out, Separator...)
+	return out
+}
 
-	return nil
+func writeErr(err error) []byte {
+	out := []byte{}
+	out = append(out, SimpleErrorsTyp)
+	out = TypWriter[SimpleErrorsTyp](&Value{typ: SimpleErrorsTyp, err: err}, out)
+	out = append(out, Separator...)
+	return out
 }
 
 func ParseRespProto(reader *RespReader) []byte {
 	b, _ := reader.Peek()
-	// fmt.Printf("Parsing proto, peek: %v\n", b)
 	switch b {
 	case ArraysTyp:
-		fmt.Println("Parsing proto ArraysTyp")
 		return execute(parseNext(reader))
 	default:
-		fmt.Printf("> ParseRespProto: Invalid data type: '%s'\n", string(b))
-		return nil
+		return execute(nil, errors.New("invalid protocol, expecting Arrays type"))
 	}
 }
 
-func parseNext(reader *RespReader) *Value {
+func parseNext(reader *RespReader) (*Value, error) {
 	reader.SkipSeparator()
-	// fmt.Printf("parseNext, Rest: >>'%v'<<\n", reader.Rest())
-
 	b, _ := reader.ReadByte()
 	switch b {
 	case BulkStringsTyp:
-		// fmt.Println("BulkStrings")
 		return parseBulkString(reader)
+	case SimpleStringsTyp:
+		return parseSimpleString(reader)
 	case ArraysTyp:
-		// fmt.Println("Arrays")
 		return parseArray(reader)
 	default:
 		fmt.Printf("> parseNext: Invalid data type: '%s'\n", string(b))
-		return nil
+		return nil, fmt.Errorf("invalid protocol, type %s not recognized or not supported", string(b))
 	}
 }
 
-func parseBulkString(reader *RespReader) *Value {
-	b, _ := reader.ReadByte()
+func parseSimpleString(reader *RespReader) (*Value, error) {
+	buf := []byte{}
+
+	for {
+		b, ok := reader.Peek()
+		if !ok {
+			break
+		}
+		if b == '\r' {
+			b2, ok := reader.PeekNext()
+			if ok && b2 == '\n' {
+				reader.Move(2)
+				break
+			}
+		}
+		buf = append(buf, b)
+		reader.Move(1)
+	}
+	return &Value{strv: string(buf)}, nil
+}
+
+func parseBulkString(reader *RespReader) (*Value, error) {
+	b, ok := reader.ReadByte()
+	if !ok {
+		return nil, errors.New("invalid protocol, expected bulk string")
+	}
 	buf := []byte{}
 	n := cast.ToInt(string(b))
 	reader.SkipSeparator()
 	for i := 0; i < n; i++ {
-		b, _ = reader.ReadByte()
+		b, ok = reader.ReadByte()
+		if !ok {
+			return nil, errors.New("invalid protocol, unexpected end of bulk string")
+		}
 		buf = append(buf, b)
 	}
-	// fmt.Println("Parsed BulkString")
-	return &Value{
-		bulkstr: string(buf),
-	}
+	return &Value{strv: string(buf)}, nil
 }
 
 type Value struct {
-	typ     byte
-	strv    string
-	bulkstr string
-	intv    int
-	arr     []*Value
+	typ  byte
+	strv string
+	intv int
+	arr  []*Value
+	err  error
 }
 
 type RespReader struct {
