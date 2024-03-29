@@ -1,4 +1,4 @@
-package main
+package resp
 
 import (
 	"errors"
@@ -14,7 +14,7 @@ const (
 
 type TcpConnHandler func(conn net.Conn)
 type TcpDataHandler struct {
-	OnData   func(remoteAddr net.Addr, buf []byte)
+	OnData   func(remoteAddr net.Addr, buf []byte) []byte
 	OnClosed func()
 }
 
@@ -24,7 +24,7 @@ func Listen(proto string, host string, port int, handler func(conn net.Conn)) er
 		return fmt.Errorf("failed to listen on %v %v:%v, %w", proto, host, port, err)
 	}
 	defer listener.Close()
-	fmt.Println("Server is listening on port 8080")
+	fmt.Printf("Server is listening on port %v\n", port)
 
 	for {
 		conn, err := listener.Accept()
@@ -36,7 +36,7 @@ func Listen(proto string, host string, port int, handler func(conn net.Conn)) er
 	}
 }
 
-func TcpConnAdatpr(delegate TcpDataHandler) TcpConnHandler {
+func TcpConnAdaptor(delegate TcpDataHandler) TcpConnHandler {
 	return func(conn net.Conn) {
 		defer conn.Close()
 		defer delegate.OnClosed()
@@ -46,11 +46,16 @@ func TcpConnAdatpr(delegate TcpDataHandler) TcpConnHandler {
 			n, err := conn.Read(buffer)
 			if err != nil {
 				if errors.Is(err, io.EOF) {
-					fmt.Println("Connection closed")
+					return
 				}
+				fmt.Println("Error:", err)
 				return
 			}
-			delegate.OnData(conn.RemoteAddr(), buffer[:n])
+			res := delegate.OnData(conn.RemoteAddr(), buffer[:n])
+			if res != nil {
+				fmt.Printf("Respond: %s \n", string(res))
+				conn.Write(res)
+			}
 		}
 	}
 }
