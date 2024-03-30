@@ -64,7 +64,31 @@ var (
 
 			memRw.Lock()
 			defer memRw.Unlock()
+
+			// TODO: Parse the args to support EX seconds | PX milliseconds
+			//
+			// NX | XX
+			var nx bool = false
+			var xx bool = false
+			if len(args) > 2 {
+				if args[2].typ == BulkStringsTyp {
+					s := strings.ToUpper(args[2].strv)
+					if s == "NX" {
+						nx = true
+					} else if s == "XX" {
+						xx = true
+					}
+				}
+			}
+			if *debug {
+				fmt.Printf("SET, nx=%v, xx=%v\n", nx, xx)
+			}
+
 			prev, ok := mem[args[0].strv]
+			if (ok && nx) || (xx && !ok) { // NX and exists or XX and not exists
+				return &Value{typ: NullsTyp}
+			}
+
 			mem[args[0].strv] = args[1].strv
 			if ok {
 				return &Value{typ: BulkStringsTyp, strv: cast.ToString(prev)}
@@ -219,6 +243,16 @@ func execute(v *Value, err error) []byte {
 		fmt.Printf("Handler is nil for %v\n", name)
 		return writeErr(fmt.Errorf("command %v is not supported", name))
 	}
+	if *debug {
+		fmt.Printf("Command: %v,", name)
+		for i, ar := range args {
+			fmt.Printf("%#v,", *ar)
+			if i < len(args)-1 {
+				fmt.Print(", ")
+			}
+		}
+		fmt.Print("\n")
+	}
 	return writeResult(handler(args))
 }
 
@@ -285,7 +319,7 @@ func parseSimpleString(reader *RespReader) (*Value, error) {
 		buf = append(buf, b)
 		reader.Move(1)
 	}
-	return &Value{strv: string(buf)}, nil
+	return &Value{typ: SimpleStringsTyp, strv: string(buf)}, nil
 }
 
 func parseBulkString(reader *RespReader) (*Value, error) {
@@ -303,7 +337,7 @@ func parseBulkString(reader *RespReader) (*Value, error) {
 		}
 		buf = append(buf, b)
 	}
-	return &Value{strv: string(buf)}, nil
+	return &Value{typ: BulkStringsTyp, strv: string(buf)}, nil
 }
 
 type Value struct {
