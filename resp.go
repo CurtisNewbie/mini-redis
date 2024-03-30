@@ -40,6 +40,7 @@ var (
 	ErrExpectArray            = errors.New("invalid protocol, expecting Arrays type")
 	ErrUnexpectedEndOfBulkStr = errors.New("invalid protocol, unexpected end of bulk string")
 	ErrInvalidTypeForCommand  = errors.New("invalid data type for command")
+	ErrEmptyPayload           = errors.New("invalid protocol, empty payload")
 )
 
 var (
@@ -238,7 +239,10 @@ func writeErr(err error) []byte {
 }
 
 func ParseRespProto(reader *RespReader) []byte {
-	b, _ := reader.Peek()
+	b, ok := reader.Peek()
+	if !ok {
+		return writeErr(ErrEmptyPayload)
+	}
 	switch b {
 	case ArraysTyp:
 		return execute(parseNext(reader))
