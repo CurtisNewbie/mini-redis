@@ -42,9 +42,7 @@ func main() {
 	err := Listen("tcp", "localhost", DefaultPort, TcpConnAdaptor(
 		TcpDataHandler{
 			OnData: func(remote net.Addr, buf []byte) []byte {
-				if *debug {
-					fmt.Printf("Received from %v:\n%s\n", remote.String(), buf)
-				}
+				Debugf("Received from %v:\n%s", remote.String(), buf)
 				return ParseRespData(buf, ParseRespProto)
 			},
 			OnClosed: func() {

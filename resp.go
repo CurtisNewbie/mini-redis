@@ -80,9 +80,7 @@ var (
 					}
 				}
 			}
-			if *debug {
-				fmt.Printf("SET, nx=%v, xx=%v\n", nx, xx)
-			}
+			Debugf("SET, nx=%v, xx=%v", nx, xx)
 
 			prev, ok := mem[args[0].strv]
 			if (ok && nx) || (xx && !ok) { // NX and exists or XX and not exists
@@ -244,7 +242,7 @@ func execute(v *Value, err error) []byte {
 		return writeErr(fmt.Errorf("command %v is not supported", name))
 	}
 	if *debug {
-		fmt.Printf("Command: %v,", name)
+		fmt.Printf("%v Command: %v,", NowStr(), name)
 		for i, ar := range args {
 			fmt.Printf("%#v,", *ar)
 			if i < len(args)-1 {
