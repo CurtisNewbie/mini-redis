@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -37,7 +36,8 @@ func main() {
 				QueueCommand(&Command{buf: buf, reply: reply})
 			},
 			OnClosed: func(remote net.Addr) {
-				fmt.Printf("Connection for %v closed\n", remote.String())
+				Debugf("Connection for %v closed\n", remote.String())
+				LogConnCount()
 			},
 		}),
 	)

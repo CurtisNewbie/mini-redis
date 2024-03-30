@@ -79,7 +79,7 @@ var (
 					}
 				}
 			}
-			Debugf("SET, nx=%v, xx=%v", nx, xx)
+			// Debugf("SET, nx=%v, xx=%v", nx, xx)
 
 			prev, ok := mem[args[0].strv]
 			if (ok && nx) || (xx && !ok) { // NX and exists or XX and not exists
