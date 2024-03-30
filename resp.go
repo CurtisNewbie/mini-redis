@@ -34,8 +34,8 @@ const (
 var (
 	ErrInvalidInt             = errors.New("value is not an integer or out of range")
 	ErrInvalidArgument        = errors.New("invalid arguments")
-	ErrExpectArrayEle         = errors.New("invalid protocol, expected array elements")
-	ErrExpectBulkStr          = errors.New("invalid protocol, expected bulk string")
+	ErrExpectArrayEle         = errors.New("invalid protocol, expecting array elements")
+	ErrExpectBulkStr          = errors.New("invalid protocol, expecting bulk string")
 	ErrExpectArray            = errors.New("invalid protocol, expecting Arrays type")
 	ErrUnexpectedEndOfBulkStr = errors.New("invalid protocol, unexpected end of bulk string")
 	ErrInvalidTypeForCommand  = errors.New("invalid data type for command")
