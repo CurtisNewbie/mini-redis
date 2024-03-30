@@ -5,12 +5,33 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 )
 
 const (
 	Tcp         = "tcp"
 	DefaultPort = 6379
 )
+
+var (
+	bufPool = sync.Pool{
+		New: func() any {
+			return []byte{}
+		},
+	}
+)
+
+func GetBuf() []byte {
+	return bufPool.Get().([]byte)
+}
+
+func PutBuf(b []byte) {
+	if cap(b) > 1024 {
+		return
+	}
+	b = b[:0]
+	bufPool.Put(b)
+}
 
 type TcpConnHandler func(conn net.Conn)
 type TcpDataHandler struct {
@@ -58,6 +79,7 @@ func TcpConnAdaptor(delegate TcpDataHandler) TcpConnHandler {
 			if res != nil {
 				Debugf("Respond: %s", string(res))
 				conn.Write(res)
+				PutBuf(res)
 			}
 		}
 	}

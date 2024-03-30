@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/spf13/cast"
 )
@@ -48,17 +49,22 @@ var (
 )
 
 var (
+	valuePool = sync.Pool{
+		New: func() any {
+			return &Value{}
+		},
+	}
+)
+
+var (
 	Separator       = []byte{'\r', '\n'}
 	CommandHandlers = map[string]func(args []*Value) *Value{
 		"PING": func(args []*Value) *Value {
-			return &Value{
-				typ:  SimpleStringsTyp,
-				strv: "PONG",
-			}
+			return NewStrValue(SimpleStringsTyp, "PONG")
 		},
 		"SET": func(args []*Value) *Value {
 			if len(args) < 2 {
-				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
+				return NewErrValue(ErrInvalidArgument)
 			}
 
 			// memRw.Lock()
@@ -83,31 +89,31 @@ var (
 
 			prev, ok := mem[args[0].strv]
 			if (ok && nx) || (xx && !ok) { // NX and exists or XX and not exists
-				return &Value{typ: NullsTyp}
+				return NewValue(NullsTyp)
 			}
 
 			mem[args[0].strv] = args[1].strv
 			if ok {
-				return &Value{typ: BulkStringsTyp, strv: cast.ToString(prev)}
+				return NewStrValue(BulkStringsTyp, cast.ToString(prev))
 			}
-			return &Value{typ: SimpleStringsTyp, strv: "OK"}
+			return NewStrValue(SimpleStringsTyp, "OK")
 		},
 		"GET": func(args []*Value) *Value {
 			if len(args) < 1 {
-				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
+				return NewErrValue(ErrInvalidArgument)
 			}
 
 			// memRw.RLock()
 			// defer memRw.RUnlock()
 			prev, ok := mem[args[0].strv]
 			if !ok {
-				return &Value{typ: NullsTyp}
+				return NewValue(NullsTyp)
 			}
-			return &Value{typ: BulkStringsTyp, strv: cast.ToString(prev)}
+			return NewStrValue(BulkStringsTyp, cast.ToString(prev))
 		},
 		"DEL": func(args []*Value) *Value {
 			if len(args) < 1 {
-				return &Value{typ: IntegersTyp, intv: 0}
+				return NewIntValue(0)
 			}
 
 			// memRw.Lock()
@@ -120,43 +126,43 @@ var (
 					delete(mem, ar.strv)
 				}
 			}
-			return &Value{typ: IntegersTyp, intv: cnt}
+			return NewIntValue(cnt)
 		},
 		"INCR": func(args []*Value) *Value {
 			if len(args) < 1 {
-				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
+				return NewErrValue(ErrInvalidArgument)
 			}
 			// memRw.Lock()
 			// defer memRw.Unlock()
 			prev, ok := mem[args[0].strv]
 			if !ok {
 				mem[args[0].strv] = int64(1)
-				return &Value{typ: IntegersTyp, intv: 1}
+				return NewIntValue(1)
 			}
 			pv, ok := prev.(int64)
 			if !ok {
-				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidInt}
+				return NewErrValue(ErrInvalidInt)
 			}
 			mem[args[0].strv] = pv + 1
-			return &Value{typ: IntegersTyp, intv: pv + 1}
+			return NewIntValue(pv + 1)
 		},
 		"DECR": func(args []*Value) *Value {
 			if len(args) < 1 {
-				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
+				return NewErrValue(ErrInvalidArgument)
 			}
 			// memRw.Lock()
 			// defer memRw.Unlock()
 			prev, ok := mem[args[0].strv]
 			if !ok {
 				mem[args[0].strv] = int64(0)
-				return &Value{typ: IntegersTyp, intv: 0}
+				return NewIntValue(0)
 			}
 			pv, ok := prev.(int64)
 			if !ok {
-				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidInt}
+				return NewErrValue(ErrInvalidInt)
 			}
 			mem[args[0].strv] = pv - 1
-			return &Value{typ: IntegersTyp, intv: pv - 1}
+			return NewIntValue(pv - 1)
 		},
 	}
 )
@@ -219,10 +225,13 @@ func parseArray(reader *RespReader) (*Value, error) {
 		}
 		elements = append(elements, ele)
 	}
-	return &Value{typ: ArraysTyp, arr: elements}, nil
+	v := NewValue(ArraysTyp)
+	v.arr = elements
+	return v, nil
 }
 
 func execute(v *Value, err error) []byte {
+	defer PutValue(v)
 	if err != nil {
 		return writeErr(err)
 	}
@@ -254,7 +263,7 @@ func execute(v *Value, err error) []byte {
 }
 
 func writeResult(v *Value) []byte {
-	out := []byte{}
+	out := GetBuf()
 	out = append(out, v.typ)
 	out = TypWriter[v.typ](v, out)
 	out = append(out, Separator...)
@@ -262,9 +271,13 @@ func writeResult(v *Value) []byte {
 }
 
 func writeErr(err error) []byte {
-	out := []byte{}
+	out := GetBuf()
 	out = append(out, SimpleErrorsTyp)
-	out = TypWriter[SimpleErrorsTyp](&Value{typ: SimpleErrorsTyp, err: err}, out)
+	v := NewValue(SimpleErrorsTyp)
+	v.err = err
+	defer PutValue(v)
+
+	out = TypWriter[SimpleErrorsTyp](v, out)
 	out = append(out, Separator...)
 	return out
 }
@@ -316,7 +329,9 @@ func parseSimpleString(reader *RespReader) (*Value, error) {
 		buf = append(buf, b)
 		reader.Move(1)
 	}
-	return &Value{typ: SimpleStringsTyp, strv: string(buf)}, nil
+	v := NewValue(SimpleStringsTyp)
+	v.strv = string(buf)
+	return v, nil
 }
 
 func parseBulkString(reader *RespReader) (*Value, error) {
@@ -334,7 +349,9 @@ func parseBulkString(reader *RespReader) (*Value, error) {
 		}
 		buf = append(buf, b)
 	}
-	return &Value{typ: BulkStringsTyp, strv: string(buf)}, nil
+	v := NewValue(BulkStringsTyp)
+	v.strv = string(buf)
+	return v, nil
 }
 
 type Value struct {
@@ -398,4 +415,47 @@ func (r *RespReader) SkipSeparator() {
 
 func (r *RespReader) Rest() string {
 	return string(r.Buf[r.Pos:])
+}
+
+func NewValue(typ byte) *Value {
+	v := valuePool.Get().(*Value)
+	v.typ = typ
+	return v
+}
+
+func NewStrValue(typ byte, s string) *Value {
+	v := NewValue(typ)
+	v.strv = s
+	return v
+}
+
+func NewIntValue(d int64) *Value {
+	v := NewValue(IntegersTyp)
+	v.intv = d
+	return v
+}
+
+func NewErrValue(err error) *Value {
+	v := NewValue(SimpleErrorsTyp)
+	v.err = err
+	return v
+}
+
+func PutValue(v *Value) {
+	if v == nil {
+		return
+	}
+
+	if v.typ == ArraysTyp {
+		for i := range v.arr {
+			ev := v.arr[i]
+			PutValue(ev)
+			v.arr[i] = nil
+		}
+	}
+	v.err = nil
+	v.intv = 0
+	v.strv = ""
+	v.typ = 0
+	valuePool.Put(v)
 }
