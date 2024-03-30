@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/spf13/cast"
 )
@@ -44,8 +43,8 @@ var (
 )
 
 var (
-	mem   = map[string]any{}
-	memRw = sync.RWMutex{}
+	mem = map[string]any{}
+	// memRw = sync.RWMutex{}
 )
 
 var (
@@ -62,8 +61,8 @@ var (
 				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
 			}
 
-			memRw.Lock()
-			defer memRw.Unlock()
+			// memRw.Lock()
+			// defer memRw.Unlock()
 
 			// TODO: Parse the args to support EX seconds | PX milliseconds
 			//
@@ -98,8 +97,8 @@ var (
 				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
 			}
 
-			memRw.RLock()
-			defer memRw.RUnlock()
+			// memRw.RLock()
+			// defer memRw.RUnlock()
 			prev, ok := mem[args[0].strv]
 			if !ok {
 				return &Value{typ: NullsTyp}
@@ -111,8 +110,8 @@ var (
 				return &Value{typ: IntegersTyp, intv: 0}
 			}
 
-			memRw.Lock()
-			defer memRw.Unlock()
+			// memRw.Lock()
+			// defer memRw.Unlock()
 			cnt := int64(0)
 			for _, ar := range args {
 				_, ok := mem[ar.strv]
@@ -127,8 +126,8 @@ var (
 			if len(args) < 1 {
 				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
 			}
-			memRw.Lock()
-			defer memRw.Unlock()
+			// memRw.Lock()
+			// defer memRw.Unlock()
 			prev, ok := mem[args[0].strv]
 			if !ok {
 				mem[args[0].strv] = int64(1)
@@ -145,8 +144,8 @@ var (
 			if len(args) < 1 {
 				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
 			}
-			memRw.Lock()
-			defer memRw.Unlock()
+			// memRw.Lock()
+			// defer memRw.Unlock()
 			prev, ok := mem[args[0].strv]
 			if !ok {
 				mem[args[0].strv] = int64(0)

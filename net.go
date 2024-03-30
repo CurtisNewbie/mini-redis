@@ -14,8 +14,9 @@ const (
 
 type TcpConnHandler func(conn net.Conn)
 type TcpDataHandler struct {
-	OnData   func(remoteAddr net.Addr, buf []byte) []byte
-	OnClosed func()
+	OnData   func(remoteAddr net.Addr, buf []byte, reply chan []byte)
+	OnClosed func(remote net.Addr)
+	Chan     chan []byte
 }
 
 func Listen(proto string, host string, port int, handler func(conn net.Conn)) error {
@@ -39,7 +40,8 @@ func Listen(proto string, host string, port int, handler func(conn net.Conn)) er
 func TcpConnAdaptor(delegate TcpDataHandler) TcpConnHandler {
 	return func(conn net.Conn) {
 		defer conn.Close()
-		defer delegate.OnClosed()
+		defer delegate.OnClosed(conn.RemoteAddr())
+		ch := make(chan []byte)
 
 		buffer := make([]byte, 1024)
 		for {
@@ -51,7 +53,8 @@ func TcpConnAdaptor(delegate TcpDataHandler) TcpConnHandler {
 				fmt.Println("Error:", err)
 				return
 			}
-			res := delegate.OnData(conn.RemoteAddr(), buffer[:n])
+			delegate.OnData(conn.RemoteAddr(), buffer[:n], ch)
+			res := <-ch
 			if res != nil {
 				Debugf("Respond: %s", string(res))
 				conn.Write(res)

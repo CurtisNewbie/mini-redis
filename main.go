@@ -15,26 +15,29 @@ func main() {
 	flag.Parse()
 
 	if *profile {
-		myMux := http.NewServeMux()
-		myMux.HandleFunc("/debug/pprof/", pprof.Index)
-		myMux.HandleFunc("/debug/pprof/{action}", pprof.Index)
-		myMux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux := http.NewServeMux()
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/{action}", pprof.Index)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 
 		go func() {
-			if err := http.ListenAndServe(":8080", myMux); err != nil {
+			if err := http.ListenAndServe(":8080", mux); err != nil {
 				panic(err)
 			}
 		}()
 	}
 
+	StartQueue()
+
 	err := Listen("tcp", "localhost", DefaultPort, TcpConnAdaptor(
 		TcpDataHandler{
-			OnData: func(remote net.Addr, buf []byte) []byte {
+			OnData: func(remote net.Addr, buf []byte, reply chan []byte) {
 				Debugf("Received from %v:\n%s", remote.String(), buf)
-				return ParseRespData(buf, ParseRespProto)
+				QueueCommand(&Command{buf: buf, reply: reply})
 			},
-			OnClosed: func() {
-				fmt.Println("Connection closed")
+			OnClosed: func(remote net.Addr) {
+				fmt.Printf("Connection for %v closed\n", remote.String())
 			},
 		}),
 	)
