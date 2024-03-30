@@ -1,4 +1,4 @@
-package resp
+package main
 
 import (
 	"errors"
@@ -15,12 +15,13 @@ RESP Data Types
 https://redis.io/docs/reference/protocol-spec/
 */
 const (
-	SimpleStringsTyp   = '+'
-	SimpleErrorsTyp    = '-'
-	IntegersTyp        = ':'
-	BulkStringsTyp     = '$'
-	ArraysTyp          = '*'
-	NullsTyp           = '_'
+	SimpleStringsTyp = '+'
+	SimpleErrorsTyp  = '-'
+	IntegersTyp      = ':'
+	BulkStringsTyp   = '$'
+	ArraysTyp        = '*'
+	NullsTyp         = '_'
+
 	BooleansTyp        = '#'
 	DoublesTyp         = ','
 	BigNumbersTyp      = '('
@@ -32,8 +33,13 @@ const (
 )
 
 var (
-	ErrInvalidInt      = errors.New("value is not an integer or out of range")
-	ErrInvalidArgument = errors.New("invalid arguments")
+	ErrInvalidInt             = errors.New("value is not an integer or out of range")
+	ErrInvalidArgument        = errors.New("invalid arguments")
+	ErrExpectArrayEle         = errors.New("invalid protocol, expected array elements")
+	ErrExpectBulkStr          = errors.New("invalid protocol, expected bulk string")
+	ErrExpectArray            = errors.New("invalid protocol, expecting Arrays type")
+	ErrUnexpectedEndOfBulkStr = errors.New("invalid protocol, unexpected end of bulk string")
+	ErrInvalidTypeForCommand  = errors.New("invalid data type for command")
 )
 
 var (
@@ -179,7 +185,7 @@ func TokenToStr(tokens [][]byte) []string {
 func parseArray(reader *RespReader) (*Value, error) {
 	b, ok := reader.ReadByte()
 	if !ok {
-		return nil, errors.New("invalid protocol, expected array elements")
+		return nil, ErrExpectArrayEle
 	}
 	n := cast.ToInt(string(b))
 
@@ -201,7 +207,7 @@ func execute(v *Value, err error) []byte {
 
 	if v.typ != ArraysTyp {
 		fmt.Printf("Unable to execute, invalid data type\n")
-		return writeErr(errors.New("invalid data type for command"))
+		return writeErr(ErrInvalidTypeForCommand)
 	}
 	// fmt.Printf("Name Value: %#v\n", *v.arr[0])
 
@@ -237,7 +243,7 @@ func ParseRespProto(reader *RespReader) []byte {
 	case ArraysTyp:
 		return execute(parseNext(reader))
 	default:
-		return execute(nil, errors.New("invalid protocol, expecting Arrays type"))
+		return execute(nil, ErrExpectArray)
 	}
 }
 
@@ -281,7 +287,7 @@ func parseSimpleString(reader *RespReader) (*Value, error) {
 func parseBulkString(reader *RespReader) (*Value, error) {
 	b, ok := reader.ReadByte()
 	if !ok {
-		return nil, errors.New("invalid protocol, expected bulk string")
+		return nil, ErrExpectBulkStr
 	}
 	buf := []byte{}
 	n := cast.ToInt(string(b))
@@ -289,7 +295,7 @@ func parseBulkString(reader *RespReader) (*Value, error) {
 	for i := 0; i < n; i++ {
 		b, ok = reader.ReadByte()
 		if !ok {
-			return nil, errors.New("invalid protocol, unexpected end of bulk string")
+			return nil, ErrUnexpectedEndOfBulkStr
 		}
 		buf = append(buf, b)
 	}
