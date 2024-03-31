@@ -77,5 +77,5 @@ func TcpConnAdaptor(delegate TcpDataHandler) TcpConnHandler {
 
 func LogConnCount() {
 	c := atomic.LoadInt64(&ConnCount)
-	Debugf("Connection count: %d\n", c)
+	Debugf("Connection count: %d", c)
 }

@@ -9,7 +9,7 @@ var (
 	ctx       context.Context
 	cancel    func()
 	queueOnce sync.Once
-	queue     = make(chan *Command, 50)
+	queue     = make(chan *Command, 500)
 )
 
 type Command struct {
