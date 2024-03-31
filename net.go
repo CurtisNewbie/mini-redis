@@ -66,7 +66,9 @@ func TcpConnAdaptor(delegate TcpDataHandler) TcpConnHandler {
 			delegate.OnData(conn.RemoteAddr(), buffer[:n], ch)
 			res := <-ch
 			if res != nil {
-				Debugf("Respond: %s", string(res))
+				if *debug {
+					Debugf("Respond: %s", string(res))
+				}
 				conn.Write(res)
 			}
 		}
