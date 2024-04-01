@@ -30,6 +30,7 @@ func main() {
 	}
 
 	StartQueue()
+	ScheduleExpire()
 
 	err := Listen("tcp", *host, *port, TcpConnAdaptor(
 		TcpDataHandler{
@@ -37,7 +38,7 @@ func main() {
 				if *debug {
 					Debugf("Received from %v:\n%s", remote.String(), buf)
 				}
-				QueueCommand(&Command{buf: buf, reply: reply})
+				QueueCommand(&Command{typ: ClientCommand, buf: buf, reply: reply})
 			},
 			OnClosed: func(remote net.Addr) {
 				if *debug {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/cast"
 )
@@ -43,11 +44,6 @@ var (
 )
 
 var (
-	mem = map[string]any{}
-	// memRw = sync.RWMutex{}
-)
-
-var (
 	Separator       = []byte{'\r', '\n'}
 	CommandHandlers = map[string]func(args []*Value) *Value{
 		"PING": func(args []*Value) *Value {
@@ -60,9 +56,6 @@ var (
 			if len(args) < 2 {
 				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
 			}
-
-			// memRw.Lock()
-			// defer memRw.Unlock()
 
 			// TODO: Parse the args to support EX seconds | PX milliseconds
 			//
@@ -97,8 +90,6 @@ var (
 				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
 			}
 
-			// memRw.RLock()
-			// defer memRw.RUnlock()
 			prev, ok := mem[args[0].strv]
 			if !ok {
 				return &Value{typ: NullsTyp}
@@ -110,8 +101,6 @@ var (
 				return &Value{typ: IntegersTyp, intv: 0}
 			}
 
-			// memRw.Lock()
-			// defer memRw.Unlock()
 			cnt := int64(0)
 			for _, ar := range args {
 				_, ok := mem[ar.strv]
@@ -126,8 +115,6 @@ var (
 			if len(args) < 1 {
 				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
 			}
-			// memRw.Lock()
-			// defer memRw.Unlock()
 			prev, ok := mem[args[0].strv]
 			if !ok {
 				mem[args[0].strv] = int64(1)
@@ -144,8 +131,6 @@ var (
 			if len(args) < 1 {
 				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
 			}
-			// memRw.Lock()
-			// defer memRw.Unlock()
 			prev, ok := mem[args[0].strv]
 			if !ok {
 				mem[args[0].strv] = int64(0)
@@ -157,6 +142,22 @@ var (
 			}
 			mem[args[0].strv] = pv - 1
 			return &Value{typ: IntegersTyp, intv: pv - 1}
+		},
+		"EXPIRE": func(args []*Value) *Value {
+			if len(args) < 2 { // EXPIRE $KEY $SECONDS
+				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
+			}
+
+			k := args[0].strv
+			_, ok := mem[k]
+			if !ok {
+				return &Value{typ: IntegersTyp, intv: 0}
+			}
+
+			n := args[1].strv
+			ttl := CalcExp(cast.ToInt64(n), time.Second)
+			SetExpire(k, ttl)
+			return &Value{typ: IntegersTyp, intv: 1}
 		},
 	}
 )

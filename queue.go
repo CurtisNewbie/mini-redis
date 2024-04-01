@@ -5,6 +5,11 @@ import (
 	"sync"
 )
 
+const (
+	ClientCommand = 0
+	ServerCommand = 1
+)
+
 var (
 	ctx       context.Context
 	cancel    func()
@@ -13,8 +18,10 @@ var (
 )
 
 type Command struct {
-	buf   []byte
-	reply chan []byte
+	typ    int
+	buf    []byte
+	reply  chan []byte
+	action func()
 }
 
 func StartQueue() {
@@ -28,8 +35,14 @@ func StartQueue() {
 				case <-ctx.Done():
 					return
 				case cmd := <-queue:
-					out := ParseRespData(cmd.buf, ParseRespProto)
-					cmd.reply <- out
+					if cmd.typ == ClientCommand {
+						out := ParseRespData(cmd.buf, ParseRespProto)
+						if cmd.reply != nil {
+							cmd.reply <- out
+						}
+					} else if cmd.typ == ServerCommand {
+						cmd.action()
+					}
 				}
 			}
 		}()
