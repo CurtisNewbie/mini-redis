@@ -361,15 +361,28 @@ func parseSimpleString(reader *RespReader) (*Value, error) {
 }
 
 func parseBulkString(reader *RespReader) (*Value, error) {
-	b, ok := reader.ReadByte()
-	if !ok {
+	nbuf := []byte{}
+	for {
+		b, ok := reader.Peek()
+		if !ok {
+			break
+		}
+		if b >= '0' && b <= '9' {
+			nbuf = append(nbuf, b)
+			reader.Move(1)
+		} else {
+			break
+		}
+	}
+	if len(nbuf) < 1 {
 		return nil, ErrExpectBulkStr
 	}
+
+	n := cast.ToInt(string(nbuf))
 	buf := []byte{}
-	n := cast.ToInt(string(b))
 	reader.SkipSeparator()
 	for i := 0; i < n; i++ {
-		b, ok = reader.ReadByte()
+		b, ok := reader.ReadByte()
 		if !ok {
 			return nil, ErrUnexpectedEndOfBulkStr
 		}
