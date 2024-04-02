@@ -174,6 +174,31 @@ var (
 			SetExpire(k, ttl)
 			return &Value{typ: IntegersTyp, intv: 1}
 		},
+		"TTL": func(args []*Value) *Value {
+			if len(args) < 1 {
+				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
+			}
+
+			k := args[0].strv
+			_, ok := Lookup(k)
+			if !ok {
+				return &Value{typ: IntegersTyp, intv: -2}
+			}
+			ttl := LoadTTL(k, false)
+			return &Value{typ: IntegersTyp, intv: ttl}
+		},
+		"PTTL": func(args []*Value) *Value {
+			if len(args) < 1 {
+				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
+			}
+			k := args[0].strv
+			_, ok := Lookup(k)
+			if !ok {
+				return &Value{typ: IntegersTyp, intv: -2}
+			}
+			ttl := LoadTTL(k, true)
+			return &Value{typ: IntegersTyp, intv: ttl}
+		},
 	}
 )
 

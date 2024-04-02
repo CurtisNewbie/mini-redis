@@ -10,6 +10,12 @@ Support Commands:
 - INCR
 - DECR
 - DEL
+- INCR
+- DECR
+- EXPIRE
+- PEXPIRE
+- TTL
+- PTTL
 
 mini-redis spawns multiple goroutines for I/O, but only uses one goroutine to execute command.
 

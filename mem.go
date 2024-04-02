@@ -96,3 +96,20 @@ func SetVal(k string, v any) {
 func IsTimeExpired(n int64) bool {
 	return time.Now().UnixMilli()-n > 0
 }
+
+func LoadTTL(k string, millisec bool) int64 {
+	v, ok := expire.Load(k)
+	if ok {
+		n := v.(int64)
+		gap := n - time.Now().UnixMilli()
+		if gap < 0 {
+			return -2 // key not found
+		}
+		if millisec {
+			return gap
+		} else {
+			return int64(float64(gap) / float64(1000))
+		}
+	}
+	return -1 // have no associated expire
+}
