@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -31,6 +32,7 @@ func main() {
 
 	StartQueue()
 	ScheduleExpire()
+	fmt.Printf("mini-redis %v\n", Version)
 
 	err := Listen("tcp", *host, *port, TcpConnAdaptor(
 		TcpDataHandler{
