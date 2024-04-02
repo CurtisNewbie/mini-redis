@@ -6,15 +6,20 @@ import (
 )
 
 var (
-	mem    = map[string]any{}
-	expire = map[string]int64{} // [string]int64{}, key -> unix millisecond
+	mem = map[string]any{}
+
+	// [string]int64{}, key -> unix millisecond
+	//
+	// https://go.dev/blog/maps
+	// https://go.dev/doc/faq#atomic_maps
+	expire = &sync.Map{}
 
 	expireJobOnce sync.Once
 )
 
 func SetExpire(k string, exp int64) {
 	Debugf("Set %v TTL %v", k, exp)
-	expire[k] = exp
+	expire.Store(k, exp)
 }
 
 func CalcExp(exp int64, dur time.Duration) int64 {
@@ -22,11 +27,11 @@ func CalcExp(exp int64, dur time.Duration) int64 {
 }
 
 func DelExpired(k string) {
-	v, ok := expire[k]
+	v, ok := expire.Load(k)
 	if !ok {
 		return
 	}
-	if IsTimeExpired(v) {
+	if IsTimeExpired(v.(int64)) {
 		Debugf("Key %v found expired in explicit check", k)
 		QueueDelete(k)
 	}
@@ -42,7 +47,7 @@ func QueueDelete(k string) {
 }
 
 func DelKey(k string) {
-	delete(expire, k)
+	expire.Delete(k)
 	delete(mem, k)
 }
 
@@ -61,29 +66,26 @@ func ScheduleExpire() {
 func runBatchExpire() {
 	start := time.Now().UnixMilli()
 	n := 0
-
-	// ranging map (read-only) is actually thread-safe as long as we don't blindly modify the map without applying any synchronization
-	for k := range expire {
-
+	expire.Range(func(key, value any) bool {
 		// check time for every 15 iteration
 		if n > 14 {
-
+			n = 0
 			// has been running for over 5ms
 			if time.Now().UnixMilli()-start > 5 {
-				return
+				return false
 			}
-			n = 0
 		}
-		DelExpired(k)
+		DelExpired(key.(string))
 		n += 1
-	}
+		return true
+	})
 }
 
 func Lookup(k string) (any, bool) {
 	mv, ok := mem[k]
 	if ok {
-		ev, eok := expire[k]
-		if eok && IsTimeExpired(ev) {
+		ev, eok := expire.Load(k)
+		if eok && IsTimeExpired(ev.(int64)) {
 			Debugf("Key %v found expired during lookup", k)
 			DelKey(k)
 			return nil, false
@@ -101,9 +103,10 @@ func IsTimeExpired(n int64) bool {
 }
 
 func LoadTTL(k string, millisec bool) int64 {
-	v, ok := expire[k]
+	v, ok := expire.Load(k)
 	if ok {
-		gap := v - time.Now().UnixMilli()
+		n := v.(int64)
+		gap := n - time.Now().UnixMilli()
 		if gap < 0 {
 			return -2 // key not found
 		}
