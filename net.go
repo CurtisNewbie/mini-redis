@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"sync/atomic"
 )
 
@@ -42,6 +43,14 @@ func Listen(proto string, host string, port int, handler func(conn net.Conn)) er
 	}
 }
 
+var (
+	bufferPool = sync.Pool{
+		New: func() any {
+			return make([]byte, 1024)
+		},
+	}
+)
+
 func TcpConnAdaptor(delegate TcpDataHandler) TcpConnHandler {
 	return func(conn net.Conn) {
 		c := atomic.AddInt64(&ConnCount, 1)
@@ -53,7 +62,13 @@ func TcpConnAdaptor(delegate TcpDataHandler) TcpConnHandler {
 
 		ch := make(chan []byte, 1)
 
-		buffer := make([]byte, 1024)
+		buffer := bufferPool.Get().([]byte)
+		defer func() {
+			if len(buffer) < 1025 {
+				bufferPool.Put(buffer[:])
+			}
+		}()
+
 		for {
 			n, err := conn.Read(buffer)
 			if err != nil {
