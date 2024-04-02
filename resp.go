@@ -74,12 +74,12 @@ var (
 			}
 			// Debugf("SET, nx=%v, xx=%v", nx, xx)
 
-			prev, ok := mem[args[0].strv]
+			prev, ok := Lookup(args[0].strv)
 			if (ok && nx) || (xx && !ok) { // NX and exists or XX and not exists
 				return &Value{typ: NullsTyp}
 			}
 
-			mem[args[0].strv] = args[1].strv
+			SetVal(args[0].strv, args[1].strv)
 			if ok {
 				return &Value{typ: BulkStringsTyp, strv: cast.ToString(prev)}
 			}
@@ -90,7 +90,7 @@ var (
 				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
 			}
 
-			prev, ok := mem[args[0].strv]
+			prev, ok := Lookup(args[0].strv)
 			if !ok {
 				return &Value{typ: NullsTyp}
 			}
@@ -100,13 +100,12 @@ var (
 			if len(args) < 1 {
 				return &Value{typ: IntegersTyp, intv: 0}
 			}
-
 			cnt := int64(0)
 			for _, ar := range args {
-				_, ok := mem[ar.strv]
+				_, ok := Lookup(ar.strv)
 				if ok {
 					cnt += 1
-					delete(mem, ar.strv)
+					DelKey(ar.strv)
 				}
 			}
 			return &Value{typ: IntegersTyp, intv: cnt}
@@ -115,32 +114,32 @@ var (
 			if len(args) < 1 {
 				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
 			}
-			prev, ok := mem[args[0].strv]
+			prev, ok := Lookup(args[0].strv)
 			if !ok {
-				mem[args[0].strv] = int64(1)
+				SetVal(args[0].strv, int64(1))
 				return &Value{typ: IntegersTyp, intv: 1}
 			}
 			pv, ok := prev.(int64)
 			if !ok {
 				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidInt}
 			}
-			mem[args[0].strv] = pv + 1
+			SetVal(args[0].strv, pv+1)
 			return &Value{typ: IntegersTyp, intv: pv + 1}
 		},
 		"DECR": func(args []*Value) *Value {
 			if len(args) < 1 {
 				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
 			}
-			prev, ok := mem[args[0].strv]
+			prev, ok := Lookup(args[0].strv)
 			if !ok {
-				mem[args[0].strv] = int64(0)
+				SetVal(args[0].strv, int64(0))
 				return &Value{typ: IntegersTyp, intv: 0}
 			}
 			pv, ok := prev.(int64)
 			if !ok {
 				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidInt}
 			}
-			mem[args[0].strv] = pv - 1
+			SetVal(args[0].strv, pv-1)
 			return &Value{typ: IntegersTyp, intv: pv - 1}
 		},
 		"EXPIRE": func(args []*Value) *Value {
@@ -149,13 +148,29 @@ var (
 			}
 
 			k := args[0].strv
-			_, ok := mem[k]
+			_, ok := Lookup(k)
 			if !ok {
 				return &Value{typ: IntegersTyp, intv: 0}
 			}
 
 			n := args[1].strv
 			ttl := CalcExp(cast.ToInt64(n), time.Second)
+			SetExpire(k, ttl)
+			return &Value{typ: IntegersTyp, intv: 1}
+		},
+		"PEXPIRE": func(args []*Value) *Value {
+			if len(args) < 2 { // EXPIRE $KEY $MILLISECONDS
+				return &Value{typ: SimpleErrorsTyp, err: ErrInvalidArgument}
+			}
+
+			k := args[0].strv
+			_, ok := Lookup(k)
+			if !ok {
+				return &Value{typ: IntegersTyp, intv: 0}
+			}
+
+			n := args[1].strv
+			ttl := CalcExp(cast.ToInt64(n), time.Millisecond)
 			SetExpire(k, ttl)
 			return &Value{typ: IntegersTyp, intv: 1}
 		},

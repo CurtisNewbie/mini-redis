@@ -13,6 +13,7 @@ var (
 )
 
 func SetExpire(k string, exp int64) {
+	Debugf("Set %v TTL %v", k, exp)
 	expire.Store(k, exp)
 }
 
@@ -25,18 +26,24 @@ func DelExpired(k string) {
 	if !ok {
 		return
 	}
-	exp := v.(int64)
-	now := time.Now().UnixMilli()
-	if now-exp > 0 {
-		QueueCommand(&Command{
-			typ: ServerCommand,
-			action: func() {
-				Debugf("Key %v expired, now %v, exp: %v", k, now, exp)
-				expire.Delete(k)
-				delete(mem, k)
-			},
-		})
+	if IsTimeExpired(v.(int64)) {
+		Debugf("Key %v found expired in explicit check", k)
+		QueueDelete(k)
 	}
+}
+
+func QueueDelete(k string) {
+	QueueCommand(&Command{
+		typ: ServerCommand,
+		action: func() {
+			DelKey(k)
+		},
+	})
+}
+
+func DelKey(k string) {
+	expire.Delete(k)
+	delete(mem, k)
 }
 
 func ScheduleExpire() {
@@ -44,11 +51,8 @@ func ScheduleExpire() {
 		go func() {
 			t := time.NewTicker(100 * time.Millisecond) // 10 times / second
 			defer t.Stop()
-			for {
-				select {
-				case <-t.C:
-					runBatchExpire()
-				}
+			for range t.C {
+				runBatchExpire()
 			}
 		}()
 	})
@@ -70,4 +74,25 @@ func runBatchExpire() {
 		n += 1
 		return true
 	})
+}
+
+func Lookup(k string) (any, bool) {
+	mv, ok := mem[k]
+	if ok {
+		ev, eok := expire.Load(k)
+		if eok && IsTimeExpired(ev.(int64)) {
+			Debugf("Key %v found expired during lookup", k)
+			DelKey(k)
+			return nil, false
+		}
+	}
+	return mv, ok
+}
+
+func SetVal(k string, v any) {
+	mem[k] = v
+}
+
+func IsTimeExpired(n int64) bool {
+	return time.Now().UnixMilli()-n > 0
 }
