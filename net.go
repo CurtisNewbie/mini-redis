@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 )
 
 const (
@@ -40,6 +41,10 @@ type TcpDataHandler struct {
 	Chan     chan []byte
 }
 
+var (
+	ConnCount int64 = 0
+)
+
 func Listen(proto string, host string, port int, handler func(conn net.Conn)) error {
 	listener, err := net.Listen(proto, fmt.Sprintf("%s:%d", host, port))
 	if err != nil {
@@ -60,9 +65,14 @@ func Listen(proto string, host string, port int, handler func(conn net.Conn)) er
 
 func TcpConnAdaptor(delegate TcpDataHandler) TcpConnHandler {
 	return func(conn net.Conn) {
+		c := atomic.AddInt64(&ConnCount, 1)
+		Debugf("Connection count: %d\n", c)
+
 		defer conn.Close()
 		defer delegate.OnClosed(conn.RemoteAddr())
-		ch := make(chan []byte)
+		defer func() { atomic.AddInt64(&ConnCount, -1) }()
+
+		ch := make(chan []byte, 1)
 
 		buffer := make([]byte, 1024)
 		for {
@@ -77,10 +87,17 @@ func TcpConnAdaptor(delegate TcpDataHandler) TcpConnHandler {
 			delegate.OnData(conn.RemoteAddr(), buffer[:n], ch)
 			res := <-ch
 			if res != nil {
-				Debugf("Respond: %s", string(res))
+				if *debug {
+					Debugf("Respond: %s", string(res))
+				}
 				conn.Write(res)
 				PutBuf(res)
 			}
 		}
 	}
+}
+
+func LogConnCount() {
+	c := atomic.LoadInt64(&ConnCount)
+	Debugf("Connection count: %d", c)
 }

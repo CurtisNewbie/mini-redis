@@ -8,6 +8,8 @@ import (
 	"net/http/pprof"
 )
 
+var host = flag.String("host", "localhost", "host")
+var port = flag.Int("port", DefaultPort, "port")
 var profile = flag.Bool("profile", false, "enable cpu/memory profiling")
 var debug = flag.Bool("debug", false, "enable debug log")
 
@@ -29,15 +31,22 @@ func main() {
 	}
 
 	StartQueue()
+	ScheduleExpire()
+	fmt.Printf("mini-redis %v\n", Version)
 
-	err := Listen("tcp", "localhost", DefaultPort, TcpConnAdaptor(
+	err := Listen("tcp", *host, *port, TcpConnAdaptor(
 		TcpDataHandler{
 			OnData: func(remote net.Addr, buf []byte, reply chan []byte) {
-				Debugf("Received from %v:\n%s", remote.String(), buf)
-				QueueCommand(&Command{buf: buf, reply: reply})
+				if *debug {
+					Debugf("Received from %v:\n%s", remote.String(), buf)
+				}
+				QueueCommand(&Command{typ: ClientCommand, buf: buf, reply: reply})
 			},
 			OnClosed: func(remote net.Addr) {
-				fmt.Printf("Connection for %v closed\n", remote.String())
+				if *debug {
+					Debugf("Connection for %v closed\n", remote.String())
+				}
+				LogConnCount()
 			},
 		}),
 	)

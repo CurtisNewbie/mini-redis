@@ -16,3 +16,7 @@ func Debugf(pat string, args ...any) {
 func NowStr() string {
 	return cast.ToString(time.Now().UnixMilli())
 }
+
+func Logf(pat string, args ...any) {
+	fmt.Printf(NowStr()+" "+pat+"\n", args...)
+}

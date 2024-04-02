@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/spf13/cast"
 )
@@ -35,17 +36,12 @@ const (
 var (
 	ErrInvalidInt             = errors.New("value is not an integer or out of range")
 	ErrInvalidArgument        = errors.New("invalid arguments")
-	ErrExpectArrayEle         = errors.New("invalid protocol, expected array elements")
-	ErrExpectBulkStr          = errors.New("invalid protocol, expected bulk string")
+	ErrExpectArrayEle         = errors.New("invalid protocol, expecting array elements")
+	ErrExpectBulkStr          = errors.New("invalid protocol, expecting bulk string")
 	ErrExpectArray            = errors.New("invalid protocol, expecting Arrays type")
 	ErrUnexpectedEndOfBulkStr = errors.New("invalid protocol, unexpected end of bulk string")
 	ErrInvalidTypeForCommand  = errors.New("invalid data type for command")
 	ErrEmptyPayload           = errors.New("invalid protocol, empty payload")
-)
-
-var (
-	mem = map[string]any{}
-	// memRw = sync.RWMutex{}
 )
 
 var (
@@ -67,9 +63,6 @@ var (
 				return NewErrValue(ErrInvalidArgument)
 			}
 
-			// memRw.Lock()
-			// defer memRw.Unlock()
-
 			// TODO: Parse the args to support EX seconds | PX milliseconds
 			//
 			// NX | XX
@@ -85,14 +78,14 @@ var (
 					}
 				}
 			}
-			Debugf("SET, nx=%v, xx=%v", nx, xx)
+			// Debugf("SET, nx=%v, xx=%v", nx, xx)
 
-			prev, ok := mem[args[0].strv]
+			prev, ok := Lookup(args[0].strv)
 			if (ok && nx) || (xx && !ok) { // NX and exists or XX and not exists
 				return NewValue(NullsTyp)
 			}
 
-			mem[args[0].strv] = args[1].strv
+			SetVal(args[0].strv, args[1].strv)
 			if ok {
 				return NewStrValue(BulkStringsTyp, cast.ToString(prev))
 			}
@@ -103,9 +96,7 @@ var (
 				return NewErrValue(ErrInvalidArgument)
 			}
 
-			// memRw.RLock()
-			// defer memRw.RUnlock()
-			prev, ok := mem[args[0].strv]
+			prev, ok := Lookup(args[0].strv)
 			if !ok {
 				return NewValue(NullsTyp)
 			}
@@ -115,15 +106,12 @@ var (
 			if len(args) < 1 {
 				return NewIntValue(0)
 			}
-
-			// memRw.Lock()
-			// defer memRw.Unlock()
 			cnt := int64(0)
 			for _, ar := range args {
-				_, ok := mem[ar.strv]
+				_, ok := Lookup(ar.strv)
 				if ok {
 					cnt += 1
-					delete(mem, ar.strv)
+					DelKey(ar.strv)
 				}
 			}
 			return NewIntValue(cnt)
@@ -132,37 +120,90 @@ var (
 			if len(args) < 1 {
 				return NewErrValue(ErrInvalidArgument)
 			}
-			// memRw.Lock()
-			// defer memRw.Unlock()
-			prev, ok := mem[args[0].strv]
+			prev, ok := Lookup(args[0].strv)
 			if !ok {
-				mem[args[0].strv] = int64(1)
+				SetVal(args[0].strv, int64(1))
 				return NewIntValue(1)
 			}
 			pv, ok := prev.(int64)
 			if !ok {
 				return NewErrValue(ErrInvalidInt)
 			}
-			mem[args[0].strv] = pv + 1
+			SetVal(args[0].strv, pv+1)
 			return NewIntValue(pv + 1)
 		},
 		"DECR": func(args []*Value) *Value {
 			if len(args) < 1 {
 				return NewErrValue(ErrInvalidArgument)
 			}
-			// memRw.Lock()
-			// defer memRw.Unlock()
-			prev, ok := mem[args[0].strv]
+			prev, ok := Lookup(args[0].strv)
 			if !ok {
-				mem[args[0].strv] = int64(0)
+				SetVal(args[0].strv, int64(0))
 				return NewIntValue(0)
 			}
 			pv, ok := prev.(int64)
 			if !ok {
 				return NewErrValue(ErrInvalidInt)
 			}
-			mem[args[0].strv] = pv - 1
+			SetVal(args[0].strv, pv-1)
 			return NewIntValue(pv - 1)
+		},
+		"EXPIRE": func(args []*Value) *Value {
+			if len(args) < 2 { // EXPIRE $KEY $SECONDS
+				return NewErrValue(ErrInvalidArgument)
+			}
+
+			k := args[0].strv
+			_, ok := Lookup(k)
+			if !ok {
+				return NewIntValue(0)
+			}
+
+			n := args[1].strv
+			ttl := CalcExp(cast.ToInt64(n), time.Second)
+			SetExpire(k, ttl)
+			return NewIntValue(1)
+		},
+		"PEXPIRE": func(args []*Value) *Value {
+			if len(args) < 2 { // EXPIRE $KEY $MILLISECONDS
+				return NewErrValue(ErrInvalidArgument)
+			}
+
+			k := args[0].strv
+			_, ok := Lookup(k)
+			if !ok {
+				return NewIntValue(0)
+			}
+
+			n := args[1].strv
+			ttl := CalcExp(cast.ToInt64(n), time.Millisecond)
+			SetExpire(k, ttl)
+			return NewIntValue(1)
+		},
+		"TTL": func(args []*Value) *Value {
+			if len(args) < 1 {
+				return NewErrValue(ErrInvalidArgument)
+			}
+
+			k := args[0].strv
+			_, ok := Lookup(k)
+			if !ok {
+				return NewIntValue(-2)
+			}
+			ttl := LoadTTL(k, false)
+			return NewIntValue(ttl)
+		},
+		"PTTL": func(args []*Value) *Value {
+			if len(args) < 1 {
+				return NewErrValue(ErrInvalidArgument)
+			}
+			k := args[0].strv
+			_, ok := Lookup(k)
+			if !ok {
+				return NewIntValue(-2)
+			}
+			ttl := LoadTTL(k, true)
+			return NewIntValue(ttl)
 		},
 	}
 )
@@ -335,15 +376,28 @@ func parseSimpleString(reader *RespReader) (*Value, error) {
 }
 
 func parseBulkString(reader *RespReader) (*Value, error) {
-	b, ok := reader.ReadByte()
-	if !ok {
+	nbuf := []byte{}
+	for {
+		b, ok := reader.Peek()
+		if !ok {
+			break
+		}
+		if b >= '0' && b <= '9' {
+			nbuf = append(nbuf, b)
+			reader.Move(1)
+		} else {
+			break
+		}
+	}
+	if len(nbuf) < 1 {
 		return nil, ErrExpectBulkStr
 	}
+
+	n := cast.ToInt(string(nbuf))
 	buf := []byte{}
-	n := cast.ToInt(string(b))
 	reader.SkipSeparator()
 	for i := 0; i < n; i++ {
-		b, ok = reader.ReadByte()
+		b, ok := reader.ReadByte()
 		if !ok {
 			return nil, ErrUnexpectedEndOfBulkStr
 		}
