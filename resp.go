@@ -248,11 +248,8 @@ func TokenToStr(tokens [][]byte) []string {
 }
 
 func parseArray(reader *RespReader) (Value, error) {
-	bufp := GetBuf()
-	buf := *bufp
-	defer func() {
-		PutBuf(bufp)
-	}()
+	buf := GetBuf()
+	defer PutBuf(buf)
 
 	for {
 		b, ok := reader.Peek()
@@ -260,16 +257,16 @@ func parseArray(reader *RespReader) (Value, error) {
 			break
 		}
 		if b >= '0' && b <= '9' {
-			buf = append(buf, b)
+			*buf = append(*buf, b)
 			reader.Skip(1)
 		} else {
 			break
 		}
 	}
-	if len(buf) < 1 {
+	if len(*buf) < 1 {
 		return NilVal, ErrExpectArrayEle
 	}
-	n := cast.ToInt(string(buf))
+	n := cast.ToInt(string(*buf))
 
 	elements := make([]Value, 0, n)
 	for i := 0; i < n; i++ {
@@ -359,11 +356,8 @@ func parseNext(reader *RespReader) (Value, error) {
 }
 
 func parseSimpleString(reader *RespReader) (Value, error) {
-	bufp := GetBuf()
-	buf := *bufp
-	defer func() {
-		PutBuf(bufp)
-	}()
+	buf := GetBuf()
+	defer PutBuf(buf)
 
 	for {
 		b, ok := reader.Peek()
@@ -377,18 +371,15 @@ func parseSimpleString(reader *RespReader) (Value, error) {
 				break
 			}
 		}
-		buf = append(buf, b)
+		*buf = append(*buf, b)
 		reader.Skip(1)
 	}
-	return Value{typ: SimpleStringsTyp, strv: string(buf)}, nil
+	return Value{typ: SimpleStringsTyp, strv: string(*buf)}, nil
 }
 
 func parseBulkString(reader *RespReader) (Value, error) {
-	bufp := GetBuf()
-	buf := *bufp
-	defer func() {
-		PutBuf(bufp)
-	}()
+	buf := GetBuf()
+	defer PutBuf(buf)
 
 	for {
 		b, ok := reader.Peek()
@@ -396,18 +387,18 @@ func parseBulkString(reader *RespReader) (Value, error) {
 			break
 		}
 		if b >= '0' && b <= '9' {
-			buf = append(buf, b)
+			*buf = append(*buf, b)
 			reader.Skip(1)
 		} else {
 			break
 		}
 	}
-	if len(buf) < 1 {
+	if len(*buf) < 1 {
 		return NilVal, ErrExpectBulkStr
 	}
 
-	n := cast.ToInt(string(buf))
-	buf = buf[:0] // resuse the buffer
+	n := cast.ToInt(string(*buf))
+	*buf = (*buf)[:0] // resuse the buffer
 
 	reader.SkipSeparator()
 	for i := 0; i < n; i++ {
@@ -415,9 +406,9 @@ func parseBulkString(reader *RespReader) (Value, error) {
 		if !ok {
 			return NilVal, ErrUnexpectedEndOfBulkStr
 		}
-		buf = append(buf, b)
+		*buf = append(*buf, b)
 	}
-	return Value{typ: BulkStringsTyp, strv: string(buf)}, nil
+	return Value{typ: BulkStringsTyp, strv: string(*buf)}, nil
 }
 
 type Value struct {
