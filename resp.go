@@ -250,9 +250,7 @@ func TokenToStr(tokens [][]byte) []string {
 func parseArray(reader *RespReader) (Value, error) {
 	bufp := GetBuf()
 	buf := *bufp
-	buf = buf[:0]
 	defer func() {
-		bufp = &buf
 		PutBuf(bufp)
 	}()
 
@@ -363,9 +361,7 @@ func parseNext(reader *RespReader) (Value, error) {
 func parseSimpleString(reader *RespReader) (Value, error) {
 	bufp := GetBuf()
 	buf := *bufp
-	buf = buf[:0]
 	defer func() {
-		bufp = &buf
 		PutBuf(bufp)
 	}()
 
@@ -390,9 +386,7 @@ func parseSimpleString(reader *RespReader) (Value, error) {
 func parseBulkString(reader *RespReader) (Value, error) {
 	bufp := GetBuf()
 	buf := *bufp
-	buf = buf[:0]
 	defer func() {
-		bufp = &buf
 		PutBuf(bufp)
 	}()
 

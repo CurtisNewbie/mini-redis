@@ -16,7 +16,9 @@ var (
 )
 
 func GetBuf() *[]byte {
-	return bufferPool.Get().(*[]byte)
+	bufp := bufferPool.Get().(*[]byte)
+	*bufp = (*bufp)[:0]
+	return bufp
 }
 
 func PutBuf(b *[]byte) {
