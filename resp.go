@@ -248,8 +248,14 @@ func TokenToStr(tokens [][]byte) []string {
 }
 
 func parseArray(reader *RespReader) (Value, error) {
-	buf := GetBuf()
-	defer PutBuf(buf)
+	bufp := GetBuf()
+	buf := *bufp
+	buf = buf[:0]
+	defer func() {
+		bufp = &buf
+		PutBuf(bufp)
+	}()
+
 	for {
 		b, ok := reader.Peek()
 		if !ok {
@@ -355,8 +361,13 @@ func parseNext(reader *RespReader) (Value, error) {
 }
 
 func parseSimpleString(reader *RespReader) (Value, error) {
-	buf := GetBuf()
-	defer PutBuf(buf)
+	bufp := GetBuf()
+	buf := *bufp
+	buf = buf[:0]
+	defer func() {
+		bufp = &buf
+		PutBuf(bufp)
+	}()
 
 	for {
 		b, ok := reader.Peek()
@@ -377,8 +388,14 @@ func parseSimpleString(reader *RespReader) (Value, error) {
 }
 
 func parseBulkString(reader *RespReader) (Value, error) {
-	buf := GetBuf()
-	defer PutBuf(buf)
+	bufp := GetBuf()
+	buf := *bufp
+	buf = buf[:0]
+	defer func() {
+		bufp = &buf
+		PutBuf(bufp)
+	}()
+
 	for {
 		b, ok := reader.Peek()
 		if !ok {
