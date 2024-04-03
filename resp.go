@@ -248,11 +248,24 @@ func TokenToStr(tokens [][]byte) []string {
 }
 
 func parseArray(reader *RespReader) (Value, error) {
-	b, ok := reader.MoveOne()
-	if !ok {
+	buf := GetBuf()
+	defer PutBuf(buf)
+	for {
+		b, ok := reader.Peek()
+		if !ok {
+			break
+		}
+		if b >= '0' && b <= '9' {
+			buf = append(buf, b)
+			reader.Skip(1)
+		} else {
+			break
+		}
+	}
+	if len(buf) < 1 {
 		return NilVal, ErrExpectArrayEle
 	}
-	n := cast.ToInt(string(b))
+	n := cast.ToInt(string(buf))
 
 	elements := make([]Value, 0, n)
 	for i := 0; i < n; i++ {
