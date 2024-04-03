@@ -268,18 +268,21 @@ func parseArray(reader *RespReader) (Value, error) {
 	}
 	n := cast.ToInt(string(*buf))
 
-	elements := make([]Value, 0, n)
+	arr := GetArr()
 	for i := 0; i < n; i++ {
 		ele, err := parseNext(reader)
 		if err != nil {
 			return NilVal, fmt.Errorf("failed to parse next array element, %w", err)
 		}
-		elements = append(elements, ele)
+		*arr = append(*arr, ele)
 	}
-	return Value{typ: ArraysTyp, arr: elements}, nil
+	return Value{typ: ArraysTyp, arr: arr}, nil
 }
 
 func execute(v Value, err error) []byte {
+	if v.typ == ArraysTyp {
+		defer PutArr(v.arr)
+	}
 	if err != nil {
 		return writeErr(err)
 	}
@@ -290,8 +293,8 @@ func execute(v Value, err error) []byte {
 	}
 	// fmt.Printf("Name Value: %#v\n", *v.arr[0])
 
-	name := strings.ToUpper(v.arr[0].strv)
-	args := v.arr[1:]
+	name := strings.ToUpper((*v.arr)[0].strv)
+	args := (*v.arr)[1:]
 	handler := CommandHandlers[name]
 	if handler == nil {
 		fmt.Printf("Handler is nil for %v\n", name)
@@ -415,7 +418,7 @@ type Value struct {
 	typ  byte
 	strv string
 	intv int64
-	arr  []Value
+	arr  *[]Value
 	err  error
 }
 
