@@ -340,7 +340,8 @@ func parseNext(reader *RespReader) (*Value, error) {
 }
 
 func parseSimpleString(reader *RespReader) (*Value, error) {
-	buf := []byte{}
+	buf := GetBuf()
+	defer PutBuf(buf)
 
 	for {
 		b, ok := reader.Peek()
@@ -361,25 +362,27 @@ func parseSimpleString(reader *RespReader) (*Value, error) {
 }
 
 func parseBulkString(reader *RespReader) (*Value, error) {
-	nbuf := []byte{}
+	buf := GetBuf()
+	defer PutBuf(buf)
 	for {
 		b, ok := reader.Peek()
 		if !ok {
 			break
 		}
 		if b >= '0' && b <= '9' {
-			nbuf = append(nbuf, b)
+			buf = append(buf, b)
 			reader.Move(1)
 		} else {
 			break
 		}
 	}
-	if len(nbuf) < 1 {
+	if len(buf) < 1 {
 		return nil, ErrExpectBulkStr
 	}
 
-	n := cast.ToInt(string(nbuf))
-	buf := []byte{}
+	n := cast.ToInt(string(buf))
+	buf = buf[:0] // resuse the buffer
+
 	reader.SkipSeparator()
 	for i := 0; i < n; i++ {
 		b, ok := reader.ReadByte()

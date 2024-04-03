@@ -15,12 +15,13 @@ var (
 )
 
 func GetBuf() []byte {
-	return bufferPool.Get().([]byte)
+	b := bufferPool.Get().([]byte)
+	b = b[:0]
+	return b
 }
 
 func PutBuf(b []byte) {
 	if cap(b) <= BufCap {
-		b = b[:0]
 		bufferPool.Put(b)
 	}
 }
