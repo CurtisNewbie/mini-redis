@@ -7,8 +7,6 @@ Support Commands:
 - PING
 - GET
 - SET
-- INCR
-- DECR
 - DEL
 - INCR
 - DECR
